@@ -4,7 +4,7 @@ class SlackListener < Redmine::Hook::Listener
 	def redmine_slack_issues_new_after_save(context={})
 		issue = context[:issue]
 
-		channel = channel_for_project issue.project
+		channel = channel_for_context issue
 		url = url_for_project issue.project
 
 		return unless channel and url
@@ -195,6 +195,43 @@ private
 		].find{|v| v.present?}
 	end
 
+	# try to define which method to use to determine Slack Channel
+	# if has an assignee 		=> go for group's channel
+	# default			=> go for project's channel
+	def channel_for_context(issue)
+		assignee = issue[:assigned_to_id]
+		
+		if(assignee)
+			# is it a group?
+			group = Group.find(assignee) rescue nil
+			if(!group)
+				# must be a user then
+				user  = User.find(assignee) rescue nil				
+				# should we send a notification to all his groups?
+				if(Setting.plugin_redmine_slack['post_user_group_channels'])
+					# TODO : choose if it's always first or can really return an array?
+					group_id = user.group_ids.first rescue nil
+					group = Group.find(group_id)
+					return channel_for_group(group)
+				end
+			end
+
+			# do we send notifications to groups?
+			return channel_for_group(group) if(group and Setting.plugin_redmine_slack['post_group_channel'])
+		end
+		
+		return channel_for_project(issue.project)
+	end
+
+	def channel_for_group(group)
+		return nil if !group
+		cf  = GroupCustomField.find_by_name("Slack Channel")
+		val = group.custom_value_for(cf).value rescue nil
+		
+		return nil if val.to_s == '-'
+		val
+	end
+	
 	def channel_for_project(proj)
 		return nil if proj.blank?
 

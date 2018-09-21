@@ -13,8 +13,10 @@
 </p>
 
 <p>
-	The channel can be changed on a per-project basis by creating a
-	<a href="/custom_fields/new?type=ProjectCustomField">project custom field</a> named "Slack Channel" (without quotes). <strong>For public channels, this value should start with a <em>#</em>.</strong>
+	The channel can be changed on a per-project or per-group basis by creating a
+	<a href="/custom_fields/new?type=ProjectCustomField">project custom field</a> or a 
+	<a href="/custom_fields/new?type=GroupCustomField">group custom field</a> named "Slack Channel" (without quotes). 
+	<strong>For public channels, this value should start with a <em>#</em>.</strong>
 </p>
 
 <p>
@@ -44,3 +46,16 @@
 	<label for="settings_post_wiki_updates">Post Wiki Updates?</label>
 	<input type="checkbox" id="settings_post_wiki_updates" value="1" name="settings[post_wiki_updates]" <%= settings['post_wiki_updates'] == '1' ? 'checked="checked"' : '' %> />
 </p>
+
+<p>
+	<label for="settings_post_group_channel">Use Group Channel?</label>
+	<input type="checkbox" id="settings_post_group_channel" value="1" name="settings[post_group_channel]" <%= settings['post_group_channel'] == '1' ? 'checked="checked"' : '' %> />
+	if Assignee is a Group, will send notification to this Group's custom channel.
+</p>
+
+<p>
+	<label for="settings_post_user_group_channels">Use Assignee's Groups Channels?</label>
+	<input type="checkbox" id="settings_post_user_group_channels" value="1" name="settings[post_user_group_channels]" <%= settings['post_user_group_channels'] == '1' ? 'checked="checked"' : '' %> />
+	if Assignee is a User, will send notification to all of his groups' custom channels.
+</p>
+
