@@ -7,6 +7,8 @@ class SlackListener < Redmine::Hook::Listener
 		channel = channel_for_context issue
 		url = url_for_project issue.project
 
+		puts "Sending to #{channel}, #{url}"
+
 		return unless channel and url
 		return if issue.is_private?
 
@@ -40,11 +42,28 @@ class SlackListener < Redmine::Hook::Listener
 	def redmine_slack_issues_edit_after_save(context={})
 		issue = context[:issue]
 		journal = context[:journal]
+		
+		# if nothing important changed, no need to communicate
+		any_important_change = false
+		journal.details.each { |detail|  
+			if (detail.prop_key == "status_id" or detail.prop_key == "assigned_to_id") 
+				any_important_change = true
+				break	
+			end 
+		}
+		return unless any_important_change
 
-		channel = channel_for_project issue.project
+		begin 
+		channels = channels_for_context issue
+		rescue Exception => e
+			Rails.logger.warn("Couldn't build informations for given context #{issue.id} - #{issue.assigned_to_id}")
+			Rails.logger.warn(e)
+			return;
+		end
+		
 		url = url_for_project issue.project
 
-		return unless channel and url and Setting.plugin_redmine_slack['post_updates'] == '1'
+		return unless channels.size > 0 and url and Setting.plugin_redmine_slack['post_updates'] == '1'
 		return if issue.is_private?
 		return if journal.private_notes?
 
@@ -53,8 +72,10 @@ class SlackListener < Redmine::Hook::Listener
 		attachment = {}
 		attachment[:text] = escape journal.notes if journal.notes
 		attachment[:fields] = journal.details.map { |d| detail_to_field d }
-
-		speak msg, channel, attachment, url
+		
+		channels.each { |channel|
+			speak msg, channel, attachment, url
+		}
 	end
 
 	def model_changeset_scan_commit_for_issue_ids_pre_issue_update(context={})
@@ -62,7 +83,7 @@ class SlackListener < Redmine::Hook::Listener
 		journal = issue.current_journal
 		changeset = context[:changeset]
 
-		channel = channel_for_project issue.project
+		channel = channel_for_context issue
 		url = url_for_project issue.project
 
 		return unless channel and url and issue.save
@@ -157,6 +178,7 @@ class SlackListener < Redmine::Hook::Listener
 			client.post_async url, {:payload => params.to_json}
 		rescue Exception => e
 			Rails.logger.warn("cannot connect to #{url}")
+			puts "cannot connect to '#{url}'"
 			Rails.logger.warn(e)
 		end
 	end
@@ -195,32 +217,45 @@ private
 		].find{|v| v.present?}
 	end
 
-	# try to define which method to use to determine Slack Channel
-	# if has an assignee 		=> go for group's channel
-	# default			=> go for project's channel
-	def channel_for_context(issue)
+	def channels_for_context(issue)
 		assignee = issue[:assigned_to_id]
+		author = issue[:author_id]
+		
+		channels = []
+				
+		# send notification to assignee and author
+		channels += channel_for_context assignee
+		channels += channel_for_context author
+
+		# if no channel after all that, add project
+		channels << channel_for_project(issue.project) if channels.size == 0
+
+		return channels.uniq.select {|ch| ch != nil && ch =~ /^[#@]\w+/}
+	end
+
+	# try to define which method to use to determine Slack Channel
+	# if assignee is a group	=> go for group's channel
+	# if assignee is a use  	=> go for user's channel, 
+	#					if none go for group's channel 
+	# default			=> go for project's channel
+	def channel_for_context(assignee)
+		channels = []
 		
 		if(assignee)
 			# is it a group?
 			group = Group.find(assignee) rescue nil
 			if(!group)
 				# must be a user then
-				user  = User.find(assignee) rescue nil				
-				# should we send a notification to all his groups?
-				if(Setting.plugin_redmine_slack['post_user_group_channels'])
-					# TODO : choose if it's always first or can really return an array?
-					group_id = user.group_ids.first rescue nil
-					group = Group.find(group_id)
-					return channel_for_group(group)
-				end
+				user  	     = User.find(assignee) rescue nil
+				user_channel = channel_for_user(user)
+				channels << user_channel if user_channel
+			else			
+				# do we send notifications to groups?
+				channels << channel_for_group(group) if(group and Setting.plugin_redmine_slack['post_group_channel'])
 			end
-
-			# do we send notifications to groups?
-			return channel_for_group(group) if(group and Setting.plugin_redmine_slack['post_group_channel'])
 		end
-		
-		return channel_for_project(issue.project)
+
+		channels
 	end
 
 	def channel_for_group(group)
@@ -229,6 +264,15 @@ private
 		val = group.custom_value_for(cf).value rescue nil
 		
 		return nil if val.to_s == '-'
+		val
+	end
+	
+	def channel_for_user(user)
+		return nil if !user
+		cf  = UserCustomField.find_by_name("Slack Channel")
+		val = user.custom_value_for(cf).value rescue nil
+		
+		return nil if val.to_s == '-' or val.to_s == ''
 		val
 	end
 	
