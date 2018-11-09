@@ -3,13 +3,21 @@ require 'httpclient'
 class SlackListener < Redmine::Hook::Listener
 	def redmine_slack_issues_new_after_save(context={})
 		issue = context[:issue]
-
-		channel = channel_for_context issue
+		
+		begin 
+			channels = channels_for_context issue
+		rescue Exception => e
+			Rails.logger.warn("Couldn't build informations for given context #{issue.id} - #{issue.assigned_to_id}")
+			Rails.logger.warn(e)
+			p e
+			return;
+		end
+		
 		url = url_for_project issue.project
 
-		puts "Sending to #{channel}, #{url}"
+		puts "Sending to #{channels}, #{url}"
 
-		return unless channel and url
+		return unless channels.size > 0 and url 
 		return if issue.is_private?
 
 		msg = "[#{escape issue.project}] #{escape issue.author} created <#{object_url issue}|#{escape issue}>#{mentions issue.description}"
@@ -36,7 +44,9 @@ class SlackListener < Redmine::Hook::Listener
 			:short => true
 		} if Setting.plugin_redmine_slack['display_watchers'] == 'yes'
 
-		speak msg, channel, attachment, url
+		channels.each { |channel|
+			speak msg, channel, attachment, url
+		}
 	end
 
 	def redmine_slack_issues_edit_after_save(context={})
@@ -54,7 +64,7 @@ class SlackListener < Redmine::Hook::Listener
 		return unless any_important_change
 
 		begin 
-		channels = channels_for_context issue
+			channels = channels_for_context issue
 		rescue Exception => e
 			Rails.logger.warn("Couldn't build informations for given context #{issue.id} - #{issue.assigned_to_id}")
 			Rails.logger.warn(e)
