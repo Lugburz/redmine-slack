@@ -234,8 +234,8 @@ private
 		channels = []
 				
 		# send notification to assignee and author
-		channel_assignee = channel_for_context assignee
-		channels_author  =  channel_for_context author
+		channels += channel_for_context assignee
+		channels += channel_for_context author
 
 		# if less than 2 channels after all that, add project
 		channels << channel_for_project(issue.project) if channels.size < 2
@@ -341,6 +341,9 @@ private
 			value = escape category.to_s
 		when "assigned_to"
 			user = User.find(detail.value) rescue nil
+			if (user == nil)
+				user = Group.find(detail.value) rescue nil
+			end
 			value = escape user.to_s
 		when "fixed_version"
 			version = Version.find(detail.value) rescue nil
