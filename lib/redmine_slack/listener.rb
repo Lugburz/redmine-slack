@@ -234,11 +234,11 @@ private
 		channels = []
 				
 		# send notification to assignee and author
-		channels += channel_for_context assignee
-		channels += channel_for_context author
+		channel_assignee = channel_for_context assignee
+		channels_author  =  channel_for_context author
 
-		# if no channel after all that, add project
-		channels << channel_for_project(issue.project) if channels.size == 0
+		# if less than 2 channels after all that, add project
+		channels << channel_for_project(issue.project) if channels.size < 2
 
 		return channels.uniq.select {|ch| ch != nil && ch =~ /^[#@]\w+/}
 	end
